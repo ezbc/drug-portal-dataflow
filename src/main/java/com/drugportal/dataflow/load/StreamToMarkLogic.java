@@ -17,6 +17,8 @@
  */
 package com.drugportal.dataflow.load;
 
+import java.util.UUID;
+
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
 import org.apache.beam.sdk.options.Default;
@@ -31,6 +33,9 @@ import org.apache.beam.sdk.transforms.ParDo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.drugportal.business.datasources.FDA;
+import com.drugportal.sources.DataSource;
+import com.drugportal.sources.DataSourceFactory;
 import com.marklogic.client.DatabaseClient;
 import com.marklogic.client.DatabaseClientFactory;
 import com.marklogic.client.DatabaseClientFactory.DigestAuthContext;
@@ -135,12 +140,21 @@ public class StreamToMarkLogic {
 			this.port = loadOptions.getPort();
 		}
 		
+		/** Create a connection with the client.
+		 * 
+		 */
 		public void initializeClient() {
+			 // TODO separate marklogic API client initialization
 			 this.client = DatabaseClientFactory.newClient(host.get(),
 			 port.get(), database.get(), new
 			 DigestAuthContext(user.get(), password.get()));
 		}
 
+		/** Initialize any clients at the bundle runtime context in order
+		 * establish expensive connections for a group of element processing
+		 * steps.
+		 * @param startBundleContext the runtime context
+		 */
 		@StartBundle
 		public void startBundle(StartBundleContext startBundleContext) {
 
@@ -151,11 +165,18 @@ public class StreamToMarkLogic {
 
 		@ProcessElement 
 		public void processElement(ProcessContext c) {
+			
+			// TODO separate the MarkLogic document construction logic from the dataflow package
 			JSONDocumentManager docMgr = this.client.newJSONDocumentManager();
 			// create a handle on the content
 			StringHandle handle = new StringHandle(c.element());
+			
+			// create a data source
+			DataSource source = DataSourceFactory.getDataSource("fda");
+			String uri = source.buildUri();
+			
 			// write the document content
-			docMgr.write("/fda/", handle);
+			docMgr.write(uri, handle);
 		}
 	}
 
