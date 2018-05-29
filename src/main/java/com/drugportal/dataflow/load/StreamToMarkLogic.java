@@ -17,6 +17,7 @@
  */
 package com.drugportal.dataflow.load;
 
+import java.io.IOException;
 import java.util.UUID;
 
 import org.apache.beam.sdk.Pipeline;
@@ -30,10 +31,14 @@ import org.apache.beam.sdk.options.ValueProvider;
 import org.apache.beam.sdk.options.ValueProvider.StaticValueProvider;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
+import org.codehaus.jackson.JsonParseException;
+import org.codehaus.jackson.map.JsonMappingException;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.drugportal.business.datasources.FDA;
+import com.drugportal.business.pojo.fda.Envelope;
 import com.drugportal.sources.DataSource;
 import com.drugportal.sources.DataSourceFactory;
 import com.marklogic.client.DatabaseClient;
@@ -164,12 +169,16 @@ public class StreamToMarkLogic {
 		}
 
 		@ProcessElement 
-		public void processElement(ProcessContext c) {
+		public void processElement(ProcessContext c) throws JsonParseException, JsonMappingException, IOException {
 			
 			// TODO separate the MarkLogic document construction logic from the dataflow package
 			JSONDocumentManager docMgr = this.client.newJSONDocumentManager();
+			
+			Envelope envelope = new ObjectMapper().readValue(c.element(), Envelope.class);
+			
+			
 			// create a handle on the content
-			StringHandle handle = new StringHandle(c.element());
+			StringHandle handle = new StringHandle(envelope.toString());
 			
 			// create a data source
 			DataSource source = DataSourceFactory.getDataSource("fda");
