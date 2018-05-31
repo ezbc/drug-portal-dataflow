@@ -18,7 +18,6 @@
 package com.drugportal.dataflow.load;
 
 import java.io.IOException;
-import java.util.UUID;
 
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
@@ -28,24 +27,20 @@ import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.Validation.Required;
 import org.apache.beam.sdk.options.ValueProvider;
-import org.apache.beam.sdk.options.ValueProvider.StaticValueProvider;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.codehaus.jackson.JsonParseException;
 import org.codehaus.jackson.map.JsonMappingException;
-import org.codehaus.jackson.map.ObjectMapper;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.drugportal.business.datasources.FDA;
-import com.drugportal.business.pojo.fda.Envelope;
 import com.drugportal.sources.DataSource;
 import com.drugportal.sources.DataSourceFactory;
 import com.marklogic.client.DatabaseClient;
 import com.marklogic.client.DatabaseClientFactory;
 import com.marklogic.client.DatabaseClientFactory.DigestAuthContext;
 import com.marklogic.client.document.JSONDocumentManager;
-import com.marklogic.client.io.InputStreamHandle;
 import com.marklogic.client.io.StringHandle;
 
 /**
@@ -120,6 +115,11 @@ public class StreamToMarkLogic {
 
 	public static class LogFn extends DoFn<String, String> {
 
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1L;
+
 		@ProcessElement
 		public void processElement(ProcessContext c) {
 			// LOG.info(c.element());
@@ -130,6 +130,10 @@ public class StreamToMarkLogic {
 	// TODO Create a database client factory
 	public static class MarkLogicIoFn extends DoFn<String, String> {
 
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1L;
 		public DatabaseClient client;
 		public ValueProvider<String> host;
 		public ValueProvider<String> database;
@@ -173,15 +177,12 @@ public class StreamToMarkLogic {
 			
 			// TODO separate the MarkLogic document construction logic from the dataflow package
 			JSONDocumentManager docMgr = this.client.newJSONDocumentManager();
-			
-			Envelope envelope = new ObjectMapper().readValue(c.element(), Envelope.class);
-			
-			
+						
 			// create a handle on the content
-			StringHandle handle = new StringHandle(envelope.toString());
+			StringHandle handle = new StringHandle(c.element());
 			
 			// create a data source
-			DataSource source = DataSourceFactory.getDataSource("fda");
+			DataSource source = DataSourceFactory.getDataSource("generic");
 			String uri = source.buildUri();
 			
 			// write the document content
@@ -189,6 +190,25 @@ public class StreamToMarkLogic {
 		}
 	}
 
+	public static class EnvelopeContentFn extends DoFn<String, String> {
+		
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1L;
+
+		@ProcessElement
+		public void processElement(ProcessContext c) throws JsonParseException, JsonMappingException, IOException {
+		
+			JSONObject content = new JSONObject(c.element());
+			JSONObject envelope = new JSONObject("{'envelope': {}}");
+			envelope.getJSONObject("envelope").put("header", new JSONObject());
+			envelope.getJSONObject("envelope").put("content", content);
+			
+			c.output(envelope.toString());
+		}
+	}
+	
 	public static void main(String[] args) {
 
 		// construct pipeline options
@@ -199,6 +219,7 @@ public class StreamToMarkLogic {
 		// read messages from pubsub
 		p.apply(PubsubIO.readStrings().fromTopic(options.getPubsubTopic()))
 		 //.apply(ParDo.of(new LogFn()))
+		 .apply(ParDo.of(new EnvelopeContentFn()))
 		 .apply(ParDo.of(new MarkLogicIoFn(options)));
 		p.run();
 	}

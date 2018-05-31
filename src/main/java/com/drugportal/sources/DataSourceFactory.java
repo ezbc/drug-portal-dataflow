@@ -1,6 +1,7 @@
 package com.drugportal.sources;
 
 import com.drugportal.business.datasources.FDA;
+import com.drugportal.business.datasources.Generic;
 
 /**
  * @author ezbc
@@ -15,7 +16,8 @@ public class DataSourceFactory {
 	public static DataSource getDataSource(String type) {
 		if ("fda".equalsIgnoreCase(type)) {
 			return new FDA();
+		} else {
+			return new Generic();
 		}
-		return null;
 	}
 }

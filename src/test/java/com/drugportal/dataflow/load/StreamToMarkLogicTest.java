@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 import java.util.Date;
+import java.util.List;
 
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.FileSystems;
@@ -13,11 +14,14 @@ import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.testing.FileChecksumMatcher;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.TestPipelineOptions;
+import org.apache.beam.sdk.transforms.DoFnTester;
+import org.hamcrest.CoreMatchers;
+import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import com.drugportal.dataflow.load.*;
+import com.drugportal.dataflow.load.StreamToMarkLogic.*;
 import com.drugportal.dataflow.load.StreamToMarkLogic.LoadOptions;
 
 /**
@@ -43,7 +47,6 @@ public class StreamToMarkLogicTest {
 		PipelineOptionsFactory.register(TestPipelineOptions.class);
 	}
 
-	@Test
 	public void testE2EStreamToMarkLogic() throws Exception {
 		LoadOptions options = TestPipeline.testingPipelineOptions().as(LoadOptions.class);
 
@@ -51,5 +54,16 @@ public class StreamToMarkLogicTest {
 
 		Pipeline p = TestPipeline.create();
 
+	}
+	
+	@Test
+	public void testEnvelopeContent() throws Exception {
+		EnvelopeContentFn envelopeContentFn = new EnvelopeContentFn();
+		DoFnTester<String, String> fnTester = DoFnTester.of(envelopeContentFn);
+		String testInput = "{'contentKey1': 'contentValue1'}";
+		@SuppressWarnings("deprecation")
+		List<String> testOutputs = fnTester.processBundle(testInput);
+		
+		Assert.assertThat(testOutputs, CoreMatchers.hasItems("{\"envelope\":{\"header\":{},\"content\":{\"contentKey1\":\"contentValue1\"}}}"));
 	}
 }
