@@ -31,6 +31,7 @@ import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.codehaus.jackson.JsonParseException;
 import org.codehaus.jackson.map.JsonMappingException;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -200,10 +201,24 @@ public class StreamToMarkLogic {
 		@ProcessElement
 		public void processElement(ProcessContext c) throws JsonParseException, JsonMappingException, IOException {
 		
-			JSONObject content = new JSONObject(c.element());
+			JSONObject message = new JSONObject(c.element());
+			JSONObject envelope = new JSONObject();
+			envelope.put("envelope", message);
+			/*
 			JSONObject envelope = new JSONObject("{'envelope': {}}");
-			envelope.getJSONObject("envelope").put("header", new JSONObject());
-			envelope.getJSONObject("envelope").put("content", content);
+			try {
+				JSONObject header = message.getJSONObject("header");
+				envelope.getJSONObject("envelope").put("header", header);
+			} catch (JSONException error) {
+				System.out.println(message.toString());
+			}
+
+			try {
+				JSONObject content = message.getJSONObject("content");
+				envelope.getJSONObject("envelope").put("content", content);
+			} catch (JSONException error) {
+				System.out.println(message.toString());
+			}*/
 			
 			c.output(envelope.toString());
 		}
