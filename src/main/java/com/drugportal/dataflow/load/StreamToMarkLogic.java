@@ -202,24 +202,12 @@ public class StreamToMarkLogic {
 		public void processElement(ProcessContext c) throws JsonParseException, JsonMappingException, IOException {
 		
 			JSONObject message = new JSONObject(c.element());
+			JSONObject dataflowProvenance = new JSONObject();
+			dataflowProvenance.put("timestamp", c.timestamp().toString());
+			dataflowProvenance.put("dataflow-pipeline", c.getPipelineOptions().getJobName());
+			message.getJSONObject("header").getJSONArray("provenance").put(dataflowProvenance);
 			JSONObject envelope = new JSONObject();
 			envelope.put("envelope", message);
-			/*
-			JSONObject envelope = new JSONObject("{'envelope': {}}");
-			try {
-				JSONObject header = message.getJSONObject("header");
-				envelope.getJSONObject("envelope").put("header", header);
-			} catch (JSONException error) {
-				System.out.println(message.toString());
-			}
-
-			try {
-				JSONObject content = message.getJSONObject("content");
-				envelope.getJSONObject("envelope").put("content", content);
-			} catch (JSONException error) {
-				System.out.println(message.toString());
-			}*/
-			
 			c.output(envelope.toString());
 		}
 	}
