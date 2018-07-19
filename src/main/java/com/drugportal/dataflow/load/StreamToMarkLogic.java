@@ -43,6 +43,8 @@ import com.marklogic.client.DatabaseClientFactory;
 import com.marklogic.client.DatabaseClientFactory.DigestAuthContext;
 import com.marklogic.client.document.JSONDocumentManager;
 import com.marklogic.client.io.StringHandle;
+import com.marklogic.client.document.DocumentManager;
+import com.marklogic.client.document.DocumentWriteSet;
 
 /**
  * A starter example for writing Beam programs.
@@ -68,16 +70,16 @@ public class StreamToMarkLogic {
 	 * Options supported by {@link WordCount}.
 	 *
 	 * <p>
-	 * Concept #4: Defining your own configuration options. Here, you can add your
-	 * own arguments to be processed by the command-line parser, and specify default
-	 * values for them. You can then access the options values in your pipeline
-	 * code.
+	 * Concept #4: Defining your own configuration options. Here, you can add
+	 * your own arguments to be processed by the command-line parser, and
+	 * specify default values for them. You can then access the options values
+	 * in your pipeline code.
 	 *
 	 * <p>
 	 * Inherits standard configuration options.
 	 */
 	public interface LoadOptions extends PipelineOptions {
-
+		
 		@Description("Topic to read from")
 		@Default.String("load-to-marklogic")
 		String getPubsubTopic();
@@ -93,11 +95,13 @@ public class StreamToMarkLogic {
 		@Description("MarkLogic Port")
 		@Required
 		ValueProvider<Integer> getPort();
+
 		void setPort(ValueProvider<Integer> value);
 
 		@Description("MarkLogic Database")
 		@Required
 		ValueProvider<String> getDatabase();
+
 		void setDatabase(ValueProvider<String> value);
 
 		@Description("MarkLogic User")
@@ -141,7 +145,9 @@ public class StreamToMarkLogic {
 		public ValueProvider<String> user;
 		public ValueProvider<String> password;
 		public ValueProvider<Integer> port;
-		
+		public JSONDocumentManager docMgr;
+		public DocumentWriteSet writeSet;
+
 		public MarkLogicIoFn(LoadOptions loadOptions) {
 			this.host = loadOptions.getHost();
 			this.database = loadOptions.getDatabase();
@@ -149,50 +155,64 @@ public class StreamToMarkLogic {
 			this.password = loadOptions.getPassword();
 			this.port = loadOptions.getPort();
 		}
-		
-		/** Create a connection with the client.
+
+		/**
+		 * Create a connection with the client.
 		 * 
 		 */
 		public void initializeClient() {
-			 // TODO separate marklogic API client initialization
-			 this.client = DatabaseClientFactory.newClient(host.get(),
-			 port.get(), database.get(), new
-			 DigestAuthContext(user.get(), password.get()));
+			// TODO separate marklogic API client initialization
+			this.client = DatabaseClientFactory.newClient(host.get(), port.get(), database.get(),
+					new DigestAuthContext(user.get(), password.get()));
 		}
 
-		/** Initialize any clients at the bundle runtime context in order
+		/**
+		 * Initialize any clients at the bundle runtime context in order
 		 * establish expensive connections for a group of element processing
 		 * steps.
-		 * @param startBundleContext the runtime context
+		 * 
+		 * @param startBundleContext
+		 *            the runtime context
 		 */
 		@StartBundle
 		public void startBundle(StartBundleContext startBundleContext) {
 
 			initializeClient();
-			System.out.println("starting bundle");
-			System.out.println(this.host);
+
+			// TODO separate the MarkLogic document construction logic from the
+			// dataflow package
+			this.docMgr = this.client.newJSONDocumentManager();
+			this.writeSet = docMgr.newWriteSet();
 		}
 
-		@ProcessElement 
+		@FinishBundle
+		public void endBundle(FinishBundleContext finishBundleContext) {
+
+			// TODO separate the MarkLogic document construction logic from the
+			// dataflow package
+			this.docMgr.write(this.writeSet);
+
+			// release the connection to the database
+			this.client.release();
+		}
+
+		@ProcessElement
 		public void processElement(ProcessContext c) throws JsonParseException, JsonMappingException, IOException {
-			
-			// TODO separate the MarkLogic document construction logic from the dataflow package
-			JSONDocumentManager docMgr = this.client.newJSONDocumentManager();
-						
+
 			// create a handle on the content
 			StringHandle handle = new StringHandle(c.element());
-			
+
 			// create a data source
 			DataSource source = DataSourceFactory.getDataSource("generic");
 			String uri = source.buildUri();
-			
+
 			// write the document content
-			docMgr.write(uri, handle);
+			this.writeSet.add(uri, handle);
 		}
 	}
 
 	public static class EnvelopeContentFn extends DoFn<String, String> {
-		
+
 		/**
 		 * 
 		 */
@@ -200,7 +220,7 @@ public class StreamToMarkLogic {
 
 		@ProcessElement
 		public void processElement(ProcessContext c) throws JsonParseException, JsonMappingException, IOException {
-		
+
 			JSONObject message = new JSONObject(c.element());
 			JSONObject dataflowProvenance = new JSONObject();
 			dataflowProvenance.put("timestamp", c.timestamp().toString());
@@ -211,7 +231,7 @@ public class StreamToMarkLogic {
 			c.output(envelope.toString());
 		}
 	}
-	
+
 	public static void main(String[] args) {
 
 		// construct pipeline options
@@ -221,9 +241,8 @@ public class StreamToMarkLogic {
 		System.out.println("starting pipeline...");
 		// read messages from pubsub
 		p.apply(PubsubIO.readStrings().fromTopic(options.getPubsubTopic()))
-		 //.apply(ParDo.of(new LogFn()))
-		 .apply(ParDo.of(new EnvelopeContentFn()))
-		 .apply(ParDo.of(new MarkLogicIoFn(options)));
+				// .apply(ParDo.of(new LogFn()))
+				.apply(ParDo.of(new EnvelopeContentFn())).apply(ParDo.of(new MarkLogicIoFn(options)));
 		p.run();
 	}
 }
